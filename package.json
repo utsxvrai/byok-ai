@@ -1,0 +1,39 @@
+{
+  "name": "byok-ai",
+  "version": "0.1.0",
+  "description": "A Universal Bring-Your-Own-Key Plugin for AI Services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "keywords": [
+    "ai",
+    "api-keys",
+    "encryption",
+    "byok",
+    "bring-your-own-key",
+    "openai",
+    "gemini",
+    "anthropic"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {}
+}
+
