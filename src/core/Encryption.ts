@@ -1,12 +1,5 @@
 import crypto from "crypto";
 
-/**
- * Encryption utility for securing API keys using AES-256-GCM.
- * 
- * This module provides secure encryption and decryption of sensitive data
- * using the Advanced Encryption Standard (AES) with 256-bit keys in
- * Galois/Counter Mode (GCM), which provides both confidentiality and authenticity.
- */
 export class Encryption {
   private readonly algorithm = "aes-256-gcm";
   private readonly keyLength = 32; // 32 bytes = 256 bits
@@ -163,4 +156,6 @@ export class Encryption {
     return crypto.randomBytes(32).toString("base64");
   }
 }
+
+
 

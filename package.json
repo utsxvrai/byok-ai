@@ -7,8 +7,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist",
-    "prepublishOnly": "npm run clean && npm run build"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepublishOnly": "npm run clean && npm run build",
+    "demo:express": "ts-node src/examples/express-gemini.ts"
   },
   "keywords": [
     "ai",
@@ -31,9 +32,14 @@
     "LICENSE"
   ],
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^20.10.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1"
+  }
 }
-

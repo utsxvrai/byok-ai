@@ -1,69 +1,42 @@
 import { Encryption } from "./Encryption";
+import { MemoryStore } from "../stores/MemoryStore";
+import { GeminiProvider } from "../providers/gemini";
+import type { KeyStore } from "../stores/types";
+import type { ProviderId } from "../providers/types";
 
-/**
- * Configuration options for initializing the BYOK instance.
- */
 export interface BYOKConfig {
-  /**
-   * Master encryption key (32 bytes) used to encrypt/decrypt user API keys.
-   * This should be stored in an environment variable and never committed to version control.
-   * 
-   * Can be provided as:
-   * - A string (will be converted to Buffer, must be exactly 32 bytes)
-   * - A Buffer (must be exactly 32 bytes)
-   * 
-   * Generate a secure key using: openssl rand -base64 32
-   */
   masterKey: string | Buffer;
+  store?: KeyStore;
+}
 
-  /**
-   * Storage adapter for persisting encrypted keys.
-   * If not provided, keys will only exist in memory (not recommended for production).
-   */
-  store?: any; // TODO: Type this properly when Store interface is defined
+export interface RegisterKeyInput {
+  userId: string;
+  provider: ProviderId;
+  apiKey: string;
+}
+
+export interface ChatInput {
+  prompt: string;
+  model?: string;
 }
 
 /**
  * BYOK - Bring Your Own Key
- * 
- * A secure, backend-only plugin for managing user-provided AI API keys.
- * 
- * This class handles:
- * - Encryption and decryption of user API keys using AES-256-GCM
- * - Secure storage of encrypted keys
- * - Provider abstraction for multiple AI services
- * 
- * @example
- * ```typescript
- * import { BYOK } from 'byok-ai';
- * 
- * const byok = new BYOK({
- *   masterKey: process.env.BYOK_MASTER_KEY,
- * });
- * ```
+ *
+ * Minimal implementation focused on Gemini support.
  */
 export class BYOK {
   private readonly encryption: Encryption;
   private readonly masterKey: Buffer;
-  private readonly store: any; // TODO: Type this properly when Store interface is defined
+  private readonly store: KeyStore;
 
-  /**
-   * Creates a new BYOK instance.
-   * 
-   * @param config - Configuration object containing masterKey and optional store
-   * @throws {Error} If masterKey is not provided or invalid
-   */
   constructor(config: BYOKConfig) {
     if (!config.masterKey) {
       throw new Error("masterKey is required in BYOK configuration");
     }
 
-    // Convert masterKey to Buffer if it's a string
-    this.masterKey = Buffer.isBuffer(config.masterKey)
-      ? config.masterKey
-      : Buffer.from(config.masterKey, "utf-8");
+    this.masterKey = this.normalizeMasterKey(config.masterKey);
 
-    // Validate master key length (32 bytes = 256 bits)
     if (this.masterKey.length !== 32) {
       throw new Error(
         `Master key must be exactly 32 bytes (256 bits). ` +
@@ -72,56 +45,103 @@ export class BYOK {
       );
     }
 
-    // Initialize encryption utility
     this.encryption = new Encryption();
-
-    // Store the storage adapter (will be used in future phases)
-    this.store = config.store || null;
-
-    // Note: Store initialization and validation will be added in future phases
+    this.store = config.store || new MemoryStore();
   }
 
   /**
-   * Gets the encryption utility instance.
-   * Internal use only - encryption should be handled by BYOK methods.
-   * 
-   * @internal
+   * Registers (validates + encrypts + stores) a user's provider key.
    */
-  getEncryption(): Encryption {
-    return this.encryption;
+  async registerKey(input: RegisterKeyInput): Promise<void> {
+    this.ensureValid();
+
+    if (!input.userId) throw new Error("userId is required");
+    if (!input.provider) throw new Error("provider is required");
+    if (!input.apiKey) throw new Error("apiKey is required");
+    if (input.provider !== "gemini") {
+      throw new Error("Only provider 'gemini' is supported in this preview");
+    }
+
+    // Basic key validation (Gemini keys typically start with AI)
+    if (!/^AI[a-zA-Z0-9_-]{10,}$/.test(input.apiKey)) {
+      throw new Error("Gemini API key appears invalid");
+    }
+
+    const encryptedKey = this.encryption.encrypt(input.apiKey, this.masterKey);
+    await this.store.set({
+      userId: input.userId,
+      provider: input.provider,
+      encryptedKey,
+      createdAt: new Date(),
+    });
   }
 
   /**
-   * Gets the master key buffer.
-   * Internal use only - master key should never be exposed.
-   * 
-   * @internal
+   * Deletes a stored key for a user/provider.
    */
-  getMasterKey(): Buffer {
-    return this.masterKey;
+  async deleteKey(userId: string, provider: ProviderId): Promise<boolean> {
+    this.ensureValid();
+    return this.store.delete(userId, provider);
   }
 
   /**
-   * Gets the storage adapter instance.
-   * Internal use only - will be used in future phases for key persistence.
-   * 
-   * @internal
+   * Checks if a key exists for a user/provider.
    */
-  getStore(): any {
-    return this.store;
+  async hasKey(userId: string, provider: ProviderId): Promise<boolean> {
+    this.ensureValid();
+    return this.store.has(userId, provider);
   }
 
   /**
-   * Validates that the instance is properly configured.
-   * 
-   * @returns true if the instance is valid
+   * Returns a provider-bound client for the given user.
    */
-  isValid(): boolean {
-    return (
-      this.masterKey !== null &&
-      this.masterKey.length === 32 &&
-      this.encryption !== null
-    );
+  use(userId: string) {
+    this.ensureValid();
+    const self = this;
+
+    return {
+      async chat(input: ChatInput & { provider?: ProviderId; model?: string }) {
+        const provider = input.provider || "gemini";
+        if (provider !== "gemini") {
+          throw new Error("Only provider 'gemini' is supported in this preview");
+        }
+
+        const record = await self.store.get(userId, provider);
+        if (!record) {
+          throw new Error("No key found for this user/provider");
+        }
+
+        const apiKey = self.encryption.decrypt(record.encryptedKey, self.masterKey);
+        const gemini = new GeminiProvider(apiKey);
+        return gemini.chat({
+          prompt: input.prompt,
+          model: input.model,
+        });
+      },
+    };
+  }
+
+  private ensureValid() {
+    if (!this.masterKey || this.masterKey.length !== 32 || !this.encryption) {
+      throw new Error("BYOK is not properly configured");
+    }
+  }
+
+  /**
+   * Accepts masterKey as Buffer, raw string (32 chars), or base64 string (44 chars).
+   */
+  private normalizeMasterKey(masterKey: string | Buffer): Buffer {
+    if (Buffer.isBuffer(masterKey)) {
+      return masterKey;
+    }
+
+    // Try base64 decode first
+    const base64Buffer = Buffer.from(masterKey, "base64");
+    if (base64Buffer.length === 32) {
+      return base64Buffer;
+    }
+
+    // Fallback: interpret as utf-8 string
+    return Buffer.from(masterKey, "utf-8");
   }
 }
-

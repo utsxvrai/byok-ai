@@ -13,14 +13,17 @@
 ### Optional
 
 - **`DATABASE_URL`** (string, optional)
+
   - Database connection string for persistent storage adapters (PostgreSQL, etc.)
   - Example: `postgresql://user:password@localhost:5432/byok_ai`
 
 - **`MONGODB_URI`** (string, optional)
+
   - MongoDB connection string for MongoDB store adapter
   - Example: `mongodb://localhost:27017/byok_ai`
 
 - **`LOG_LEVEL`** (string, optional)
+
   - Logging level: `debug`, `info`, `warn`, `error`
   - Default: `info`
 
@@ -48,4 +51,5 @@ NODE_ENV=development
 2. **Use strong master keys** - Generate using cryptographically secure random generators
 3. **Rotate keys carefully** - Changing `BYOK_MASTER_KEY` will make all encrypted keys unreadable
 4. **Use different keys per environment** - Development, staging, and production should have separate master keys
+
 
